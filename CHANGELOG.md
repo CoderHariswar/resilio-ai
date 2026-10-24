@@ -12,7 +12,7 @@ All notable changes to this project are documented here. The format follows
   correct RCA because causality wasn't "proven" (llama3.2:3b recall: 0% on a 5-scenario smoke test, 96.7% on the full 50).
 
 ### Added
-- First real-model benchmark results (llama3.2:3b via Ollama) in the README.
+- First real-model benchmark results in the README: llama3.2:3b and qwen2.5:7b via Ollama.
 
 ## [0.1.0] - 2026-10-24
 
