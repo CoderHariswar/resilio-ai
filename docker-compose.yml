@@ -1,0 +1,78 @@
+# ResilioAI - local stack in Mock Mode. No API keys required.
+#
+#   docker compose up --build                 # api + postgres(pgvector) + redis
+#   docker compose --profile observability up # ...plus Prometheus on :9090
+#   docker compose watch                      # hot-reload: syncs ./resilio and restarts
+#
+# Switch any provider to the real thing by adding it to .env (see .env.example).
+
+name: resilio
+
+services:
+  api:
+    build: .
+    image: resilio-ai:local
+    ports:
+      - "${RESILIO_PORT:-8000}:8000" # RESILIO_PORT=18000 if 8000 is taken
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://resilio:resilio@postgres:5432/resilio
+      REDIS_URL: redis://redis:6379/0
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8000}
+      RESILIO_API_URL: http://localhost:8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    tty: true # colourful terminal notifications in `docker compose logs`
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./resilio
+          target: /app/resilio
+        - action: rebuild
+          path: pyproject.toml
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: resilio
+      POSTGRES_PASSWORD: resilio # local development only
+      POSTGRES_DB: resilio
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resilio -d resilio"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    profiles: ["observability"]
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  redisdata:
