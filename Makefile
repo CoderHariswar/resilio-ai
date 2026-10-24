@@ -60,9 +60,8 @@ eval: ## Run the 50-scenario offline benchmark
 seed: ## Write benchmarks/scenarios.json
 	uv run python scripts/seed_eval_benchmark.py
 
-demo: ## Re-record docs/assets/demo.gif with vhs (in Docker)
-	docker build -q -f docs/assets/demo.Dockerfile -t resilio-demo .
-	docker run --rm -u $$(id -u):$$(id -g) -v $(CURDIR):/vhs -w /vhs resilio-demo docs/assets/demo.tape
+demo: ## Re-record docs/assets/demo.gif (needs vhs + ttyd: https://github.com/charmbracelet/vhs)
+	uv run vhs docs/assets/demo.tape
 
 clean: ## Remove caches and build artifacts
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov dist build

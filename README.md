@@ -23,6 +23,8 @@ risk-tiered approval → rollback → verified against live telemetry.
 
 </div>
 
+<p align="center"><img src="docs/assets/demo.gif" alt="resilio dev simulate: the evaluator rejects a hallucinated commit SHA, the rollback is approved, the service recovers" width="900"></p>
+
 ---
 
 ## Why ResilioAI

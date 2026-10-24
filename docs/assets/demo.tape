@@ -1,5 +1,5 @@
-# Regenerate docs/assets/demo.gif:   make demo
-# (renders with charmbracelet/vhs in Docker; nothing to install locally)
+# Regenerate docs/assets/demo.gif:   make demo   (runs `uv run vhs docs/assets/demo.tape`)
+# Requires vhs and ttyd on PATH: https://github.com/charmbracelet/vhs#installation
 
 Output docs/assets/demo.gif
 
