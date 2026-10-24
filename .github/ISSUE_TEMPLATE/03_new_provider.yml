@@ -1,0 +1,64 @@
+name: New provider integration
+description: Request or propose an adapter for an observability, CI/CD, chat/paging or LLM system.
+title: "[provider] "
+labels: ["provider", "good first issue", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Most providers are **one Python file under 50 lines**. See
+        [docs/CONTRIBUTING.md](../blob/main/docs/CONTRIBUTING.md#build-a-provider-in-under-50-lines)
+        for a complete, tested example.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Provider kind
+      options:
+        - Telemetry (BaseTelemetryProvider)
+        - Remediation (BaseRemediationProvider)
+        - Notifications (BaseNotifier)
+        - LLM (BaseLLMProvider)
+    validations:
+      required: true
+
+  - type: input
+    id: system
+    attributes:
+      label: System
+      placeholder: "e.g. New Relic, Dynatrace, Grafana Tempo, GitLab CI, Spinnaker, Opsgenie, Gemini"
+    validations:
+      required: true
+
+  - type: input
+    id: api-docs
+    attributes:
+      label: Link to the API documentation
+    validations:
+      required: true
+
+  - type: textarea
+    id: mapping
+    attributes:
+      label: Interface mapping
+      description: Which API calls implement the required methods?
+      placeholder: |
+        fetch_traces   -> POST /graphql (NRQL over TransactionError)
+        get_error_rate -> NRQL percentage(count(*), WHERE error IS true)
+    validations:
+      required: true
+
+  - type: textarea
+    id: auth
+    attributes:
+      label: Authentication & required settings
+      placeholder: "NEW_RELIC_API_KEY (User key), NEW_RELIC_ACCOUNT_ID"
+
+  - type: checkboxes
+    id: plan
+    attributes:
+      label: Plan
+      options:
+        - label: I can implement this.
+        - label: I can test it against a real account.
+        - label: It should ship in-tree (otherwise a separate package with an entry point is fine).

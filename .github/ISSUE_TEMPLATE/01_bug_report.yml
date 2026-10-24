@@ -1,0 +1,92 @@
+name: Bug report
+description: Something in ResilioAI is broken or behaves unexpectedly.
+title: "[bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this! Please **redact secrets and customer data**
+        from logs before pasting - ResilioAI scrubs its own logs, but your shell history won't.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The smaller the better. Mock Mode reproductions get fixed fastest.
+      placeholder: |
+        1. docker compose up --build
+        2. resilio dev simulate --type deadlock
+        3. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Graph / workflow (telemetry, synthesizer, evaluator, policy, remediation)
+        - Telemetry provider
+        - Remediation provider
+        - Notification provider
+        - LLM provider
+        - API / webhooks
+        - CLI
+        - Docker / deployment
+        - Docs
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: providers
+    attributes:
+      label: Active providers
+      description: Output of `resilio providers` (the "active" column is enough).
+      placeholder: telemetry=datadog remediation=argocd notifiers=slack llm=ollama
+
+  - type: input
+    id: version
+    attributes:
+      label: ResilioAI version / commit
+      placeholder: "0.1.0 or a git SHA"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: How are you running it?
+      options:
+        - docker compose
+        - Kubernetes
+        - uv / local Python
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / incident timeline
+      description: "`resilio show <incident-id>` output is very helpful."
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I removed secrets, tokens and customer data from everything above.
+          required: true
