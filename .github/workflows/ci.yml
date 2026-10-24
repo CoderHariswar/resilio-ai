@@ -51,7 +51,7 @@ jobs:
           enable-cache: true
       - run: uv sync --extra dev --frozen --python ${{ matrix.python }}
       - run: uv run pytest --cov --cov-report=term --cov-report=xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: matrix.python == '3.12'
         with:
           name: coverage
