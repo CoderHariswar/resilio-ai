@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#111c33"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="640" fill="url(#bg)"/>
+
+  <!-- Title block -->
+  <text x="80" y="150" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="88" font-weight="700" fill="#f1f5f9">Resilio<tspan fill="#38bdf8">AI</tspan></text>
+  <text x="82" y="210" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="32" fill="#cbd5e1">The autonomous incident responder that checks its own work.</text>
+
+  <!-- Pipeline -->
+  <g font-family="DejaVu Sans Mono, monospace" font-size="22" fill="#e2e8f0">
+    <g transform="translate(80,290)">
+      <rect width="150" height="64" rx="10" fill="#1e293b" stroke="#334155"/>
+      <text x="75" y="40" text-anchor="middle">alert</text>
+    </g>
+    <g transform="translate(270,290)">
+      <rect width="170" height="64" rx="10" fill="#1e293b" stroke="#334155"/>
+      <text x="85" y="40" text-anchor="middle">evidence</text>
+    </g>
+    <g transform="translate(480,290)">
+      <rect width="150" height="64" rx="10" fill="#1e293b" stroke="#334155"/>
+      <text x="75" y="40" text-anchor="middle">RCA</text>
+    </g>
+    <g transform="translate(670,290)">
+      <rect width="170" height="64" rx="10" fill="#3b1d1d" stroke="#f87171"/>
+      <text x="85" y="40" text-anchor="middle" fill="#fecaca">LLM judge</text>
+    </g>
+    <g transform="translate(880,290)">
+      <rect width="150" height="64" rx="10" fill="#3a2f12" stroke="#fbbf24"/>
+      <text x="75" y="40" text-anchor="middle" fill="#fde68a">approve</text>
+    </g>
+    <g transform="translate(1070,290)">
+      <rect width="130" height="64" rx="10" fill="#12321f" stroke="#4ade80"/>
+      <text x="65" y="40" text-anchor="middle" fill="#bbf7d0">fixed</text>
+    </g>
+    <g fill="#64748b" font-size="28">
+      <text x="238" y="332">›</text>
+      <text x="448" y="332">›</text>
+      <text x="638" y="332">›</text>
+      <text x="848" y="332">›</text>
+      <text x="1038" y="332">›</text>
+    </g>
+    <text x="755" y="392" text-anchor="middle" font-size="18" fill="#f87171">rejects hallucinated SHAs</text>
+  </g>
+
+  <!-- Feature lines -->
+  <text x="80" y="480" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#94a3b8">Datadog · Sentry · OpenTelemetry · Prometheus  →  GitHub Actions · ArgoCD · Kubernetes</text>
+  <text x="80" y="520" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#94a3b8">OpenAI · Anthropic · Ollama · vLLM  ·  LangGraph  ·  PostgreSQL + pgvector</text>
+
+  <text x="80" y="590" font-family="DejaVu Sans Mono, monospace" font-size="24" fill="#38bdf8">docker compose up --build</text>
+  <text x="1200" y="590" text-anchor="end" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#64748b">github.com/CoderHariswar/resilio-ai</text>
+</svg>

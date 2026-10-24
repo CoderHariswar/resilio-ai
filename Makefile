@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 PG_TEST_URL ?= postgresql://postgres:resilio@localhost:55432/postgres
 
-.PHONY: help install hooks dev test test-pg lint fmt typecheck check up down logs watch simulate simulate-webhook eval seed clean
+.PHONY: help install hooks dev test test-pg lint fmt typecheck check up down logs watch simulate simulate-webhook eval seed demo clean
 
 help: ## Show this help
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -59,6 +59,10 @@ eval: ## Run the 50-scenario offline benchmark
 
 seed: ## Write benchmarks/scenarios.json
 	uv run python scripts/seed_eval_benchmark.py
+
+demo: ## Re-record docs/assets/demo.gif with vhs (in Docker)
+	docker build -q -f docs/assets/demo.Dockerfile -t resilio-demo .
+	docker run --rm -u $$(id -u):$$(id -g) -v $(CURDIR):/vhs -w /vhs resilio-demo docs/assets/demo.tape
 
 clean: ## Remove caches and build artifacts
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov dist build
