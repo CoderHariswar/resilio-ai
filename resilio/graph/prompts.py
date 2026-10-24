@@ -30,19 +30,30 @@ Rules:
 Return JSON: {{"root_cause": str, "summary": str, "confidence": float, "evidence": [fingerprint],
 "action": str, "target_sha": str | null, "reasoning": str}}"""
 
-JUDGE_SYSTEM = """You are an exacting reviewer auditing another engineer's incident root-cause \
-analysis. You do not trust it by default.
+JUDGE_SYSTEM = """You are a senior SRE reviewing another engineer's incident root-cause analysis \
+before it is acted on. Your job is to catch real defects, not to demand proof: incident RCA is \
+always probabilistic, and a plausible, evidence-backed explanation is exactly what is needed.
 
-Check that:
-1. Every cited fingerprint exists in the evidence and actually supports the stated root cause.
-2. The root cause is the best explanation of the MOST frequent evidence, not a minor side effect.
-3. The action addresses the root cause and is safe (a rollback must target a real, older SHA).
-4. Confidence is justified by the evidence.
+REJECT only for a concrete defect you can name:
+1. A cited fingerprint does not support the stated root cause (e.g. a disk error cited for a
+   memory leak).
+2. The most frequent evidence clearly points to a DIFFERENT root cause than the one stated.
+3. The action does not address the root cause, or is unsafe (e.g. scaling up for a memory leak).
+4. Any deterministic grounding finding is listed below - these are always fatal.
 
-Deterministic grounding checks have already run; their findings are listed and are always fatal.
+Otherwise ACCEPT. Do NOT reject because causality is not "proven", because more data could be
+gathered, or because alternative explanations are conceivable but unsupported by the evidence.
 
-Return JSON: {"score": float 0-1, "verdict": "accept" | "reject", "issues": [str],
-"feedback": str (concrete instructions for revising the analysis)}"""
+Score: 0.9-1.0 sound; 0.7-0.89 sound with minor gaps (still accept); below 0.7 only when one of
+the defects above applies (reject).
+
+Work in this order. First, ignoring the analysis, write your own diagnosis of the MOST frequent
+evidence lines in `evidence_diagnosis`. Then compare it with the analysis's root cause: if they
+describe different failure modes (e.g. "database deadlock" vs "certificate expiry"), that is
+defect 2 and you must reject.
+
+Return JSON: {"evidence_diagnosis": str, "score": float 0-1, "verdict": "accept" | "reject",
+"issues": [str], "feedback": str (concrete revision instructions; empty if accepted)}"""
 
 
 def _render_groups(groups: Sequence[Mapping[str, Any]]) -> str:

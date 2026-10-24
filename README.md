@@ -214,11 +214,33 @@ one with a **fabricated SHA or fingerprint**, and one with a **plausible but wro
 covers judge precision and recall, *hallucination escape rate* (fabrications accepted), *misattribution
 escape rate*, and end-to-end RCA accuracy, along with how often the evaluator had to correct the synthesizer.
 
-> **About the numbers.** The bundled rules baseline scores 100% judge precision and catches 100% of
-> fabrications. That's expected rather than impressive: the scenarios are generated from the same
-> templates its rules were written for, and mechanical grounding checks catch every fabricated SHA by
-> construction. The benchmark is there to **gate real models and prompt changes** (does your LLM still
-> catch misattributed root causes?), and to grow with your own historical incidents.
+### Results
+
+| Metric | Rules baseline (`mock`) | `llama3.2:3b` via Ollama |
+|---|---|---|
+| Judge precision (accepted RCAs that were correct) | 100% | 80.6% |
+| Judge recall (correct RCAs accepted) | 100% | 96.7% |
+| Hallucination escape rate (fabricated SHA/evidence accepted) | 0% | **0%** |
+| Misattribution escape rate (wrong root cause accepted) | 0% | **70%** |
+| End-to-end root-cause accuracy | 100% | 66% |
+| First-pass hallucination rate (caught and corrected) | 26% | 18% |
+| Escalated with no accepted RCA | 0% | 4% |
+| Wall time, 50 scenarios | 0.04 s | 13.3 min (RTX 3050 Ti Laptop, 4 GB) |
+
+What the numbers mean:
+
+- **Fabrications never get through, with any model.** Invented commit SHAs and evidence fingerprints are
+  caught by the deterministic grounding checks, which don't depend on the LLM.
+- **A 3B judge cannot reliably catch a plausible but wrong root cause.** It accepted 7 of 10. Semantic
+  review needs a stronger model. Until you have benchmarked yours, keep `AUTO_APPROVE_MAX_RISK` at `low`
+  so a human approves every rollback.
+- **The rules baseline scoring 100% is expected, not impressive.** The scenarios are generated from the
+  same templates its rules were written for. It's a sanity check, not a target.
+
+The benchmark already earned its keep: the first run with a real model showed the original judge prompt
+rejecting *every* correct analysis, because it demanded proof of causality. The calibrated prompt in
+[`prompts.py`](resilio/graph/prompts.py) fixed that (recall went from 0% on a 5-scenario smoke test to 96.7% on the full run). Run it on your own model and
+prompt changes, and add your historical incidents to the scenario file.
 
 ## Self-observability
 

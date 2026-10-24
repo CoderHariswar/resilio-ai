@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- Judge prompt now rejects only for named, concrete defects and writes its own diagnosis of the
+  evidence before comparing it with the analysis. The old prompt made small models reject every
+  correct RCA because causality wasn't "proven" (llama3.2:3b recall: 0% on a 5-scenario smoke test, 96.7% on the full 50).
+
+### Added
+- First real-model benchmark results (llama3.2:3b via Ollama) in the README.
+
 ## [0.1.0] - 2026-10-24
 
 ### Added
