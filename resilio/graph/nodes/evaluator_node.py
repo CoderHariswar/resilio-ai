@@ -159,10 +159,10 @@ def make_evaluation_router(
 
     def route_after_evaluation(
         state: IncidentState,
-    ) -> Literal["policy", "synthesizer", "escalate"]:
+    ) -> Literal["confidence", "synthesizer", "escalate"]:
         evaluation = state.get("evaluation") or {}
         if evaluation.get("accepted"):
-            return "policy"
+            return "confidence"
         if state.get("evaluator_attempts", 0) <= max_retries:
             return "synthesizer"
         return "escalate"

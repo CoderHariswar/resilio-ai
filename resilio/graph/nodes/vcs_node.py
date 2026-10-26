@@ -59,7 +59,9 @@ def make_vcs_node(deps: WorkflowDeps) -> NodeFn:
             logger.warning("deployment history unavailable for %s: %s", event.service, exc)
             deployments = []
 
-        suspect, target = correlate(deployments, error_onset(event, state.get("trace_groups", [])))
+        onset = error_onset(event, state.get("trace_groups", []))
+        suspect, target = correlate(deployments, onset)
+        gap = round((onset - suspect.deployed_at).total_seconds() / 60, 2) if suspect else None
         if suspect:
             message = (
                 f"onset follows deploy {suspect.sha[:8]} ({suspect.message!r}); "
@@ -71,6 +73,7 @@ def make_vcs_node(deps: WorkflowDeps) -> NodeFn:
             "deployments": [d.model_dump(mode="json") for d in deployments],
             "suspect_deployment": suspect.model_dump(mode="json") if suspect else None,
             "rollback_target": target,
+            "deploy_onset_gap_minutes": gap,
             "timeline": timeline("vcs", message),
         }
 

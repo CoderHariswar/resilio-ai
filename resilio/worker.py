@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 SUMMARY_KEYS = (
     "hypothesis",
     "evaluation",
+    "confidence",
+    "llm_confidence",
+    "confidence_breakdown",
     "policy",
     "approval",
     "remediation",

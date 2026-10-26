@@ -56,6 +56,16 @@ NODE_DURATION_SECONDS = Histogram(
     ["node"],
     buckets=(0.01, 0.05, 0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120),
 )
+CONFIDENCE_SCORE = Histogram(
+    "resilio_confidence_score",
+    "Rule-based confidence of accepted hypotheses (what the policy acts on).",
+    buckets=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0),
+)
+LLM_CONFIDENCE_DELTA = Histogram(
+    "resilio_llm_confidence_delta",
+    "Rule-based confidence minus the LLM's self-reported confidence.",
+    buckets=(-0.75, -0.5, -0.25, -0.1, 0.0, 0.1, 0.25, 0.5, 0.75, 1.0),
+)
 PROVIDER_ERRORS_TOTAL = Counter(
     "resilio_provider_errors_total", "Errors raised by external providers.", ["kind", "provider"]
 )
