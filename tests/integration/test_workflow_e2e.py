@@ -35,7 +35,16 @@ async def test_low_risk_incident_auto_resolves(
     assert metric("resilio_incidents_total", {"status": "resolved"}) == before + 1
     assert metric("resilio_resolution_duration_seconds_count", {"status": "resolved"}) >= 1
     nodes = [entry["node"] for entry in state["timeline"]]
-    assert nodes == ["telemetry", "vcs", "synthesizer", "evaluator", "policy", "remediation"]
+    assert nodes == [
+        "telemetry",
+        "vcs",
+        "synthesizer",
+        "evaluator",
+        "confidence",
+        "policy",
+        "remediation",
+    ]
+    assert state["confidence"] >= container.settings.min_auto_confidence
 
 
 async def test_rollback_pauses_for_human_then_resolves(

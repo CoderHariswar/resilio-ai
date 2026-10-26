@@ -9,7 +9,7 @@ restart / scale_up         base LOW
 rollback                   base MEDIUM
 service in CRITICAL_SERVICES  +1 tier
 severity == critical       +1 tier
-confidence < MIN_AUTO_CONFIDENCE  +1 tier
+confidence < MIN_AUTO_CONFIDENCE  +1 tier (rule-based, see confidence_node)
 judge unavailable          +1 tier
 non-production environment -1 tier (floor LOW)
 =========================  =====================
@@ -44,8 +44,13 @@ def assess_risk(
     event: Mapping[str, Any],
     hypothesis: Mapping[str, Any],
     evaluation: Mapping[str, Any],
+    *,
+    confidence: float,
 ) -> dict[str, Any]:
-    """Return ``{"risk", "decision", "reasons"}`` for an accepted hypothesis."""
+    """Return ``{"risk", "decision", "reasons"}`` for an accepted hypothesis.
+
+    ``confidence`` is the rule-based score, never the model's self-report.
+    """
     action = RemediationAction(hypothesis.get("action", "none"))
     if action == RemediationAction.NONE:
         return {
@@ -62,9 +67,9 @@ def assess_risk(
     if event.get("severity") == Severity.CRITICAL.value:
         tier += 1
         reasons.append("alert severity is critical")
-    if float(hypothesis.get("confidence", 0.0)) < settings.min_auto_confidence:
+    if confidence < settings.min_auto_confidence:
         tier += 1
-        reasons.append(f"confidence below {settings.min_auto_confidence}")
+        reasons.append(f"confidence {confidence:.2f} below {settings.min_auto_confidence}")
     if not evaluation.get("judge_available", True):
         tier += 1
         reasons.append("LLM judge unavailable")
@@ -85,12 +90,23 @@ def assess_risk(
     return {"risk": risk.value, "decision": decision, "reasons": reasons}
 
 
+def confidence_line(state: IncidentState) -> str:
+    """``0.82 (deploy timing +0.30, judge +0.25, ...)`` for human-facing messages."""
+    breakdown = state.get("confidence_breakdown") or {}
+    return str(breakdown.get("summary") or f"{float(state.get('confidence') or 0.0):.2f}")
+
+
 def make_policy_node(deps: WorkflowDeps) -> NodeFn:
     @instrumented("policy")
     async def policy_node(state: IncidentState) -> dict[str, Any]:
         hypothesis = state.get("hypothesis") or {}
+        # Missing confidence (should not happen after confidence_node) counts as 0.
         policy = assess_risk(
-            deps.settings, state["event"], hypothesis, state.get("evaluation") or {}
+            deps.settings,
+            state["event"],
+            hypothesis,
+            state.get("evaluation") or {},
+            confidence=float(state.get("confidence") or 0.0),
         )
         update: dict[str, Any] = {
             "policy": policy,
@@ -108,7 +124,11 @@ def make_policy_node(deps: WorkflowDeps) -> NodeFn:
                     body=hypothesis.get("summary", ""),
                     severity=Severity(event.get("severity", "high")),
                     service=event["service"],
-                    fields={"root cause": hypothesis["root_cause"], "risk": policy["risk"]},
+                    fields={
+                        "root cause": hypothesis["root_cause"],
+                        "risk": policy["risk"],
+                        "confidence": confidence_line(state),
+                    },
                 )
             )
         return update

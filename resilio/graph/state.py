@@ -34,11 +34,17 @@ class IncidentState(TypedDict, total=False):
     deployments: list[dict[str, Any]]
     suspect_deployment: dict[str, Any] | None
     rollback_target: str | None
+    deploy_onset_gap_minutes: float | None
 
     # --- synthesizer_node / evaluator_node
     hypothesis: dict[str, Any] | None
     evaluation: dict[str, Any] | None
     evaluator_attempts: int
+
+    # --- confidence_node (rule-based; the policy uses `confidence`)
+    confidence: float | None
+    llm_confidence: float | None
+    confidence_breakdown: dict[str, Any] | None
 
     # --- policy / approval / remediation
     policy: dict[str, Any] | None

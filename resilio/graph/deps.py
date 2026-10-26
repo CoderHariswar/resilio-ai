@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from resilio.scoring.confidence import BaseConfidenceScorer, WeightedRuleScorer
 from resilio.utils.embeddings import Embedder, HashingEmbedder
 
 if TYPE_CHECKING:
@@ -27,3 +28,4 @@ class WorkflowDeps:
     llm: BaseLLMProvider
     repository: IncidentRepository
     embedder: Embedder = field(default_factory=HashingEmbedder)
+    confidence_scorer: BaseConfidenceScorer = field(default_factory=WeightedRuleScorer)

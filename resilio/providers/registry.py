@@ -24,13 +24,14 @@ from resilio.providers.base import (
     BaseRemediationProvider,
     BaseTelemetryProvider,
 )
+from resilio.scoring.confidence import BaseConfidenceScorer, load_confidence_config
 
 if TYPE_CHECKING:
     from resilio.config import Settings
 
 logger = logging.getLogger(__name__)
 
-ProviderKind = Literal["telemetry", "remediation", "notifiers", "llm"]
+ProviderKind = Literal["telemetry", "remediation", "notifiers", "llm", "confidence"]
 T = TypeVar("T")
 
 _BASES: dict[ProviderKind, type] = {
@@ -38,6 +39,7 @@ _BASES: dict[ProviderKind, type] = {
     "remediation": BaseRemediationProvider,
     "notifiers": BaseNotifier,
     "llm": BaseLLMProvider,
+    "confidence": BaseConfidenceScorer,
 }
 
 _BUILTINS: dict[ProviderKind, dict[str, str]] = {
@@ -74,6 +76,9 @@ _BUILTINS: dict[ProviderKind, dict[str, str]] = {
         "ollama": "resilio.providers.llm.openai_compat:OllamaProvider",
         "vllm": "resilio.providers.llm.openai_compat:VLLMProvider",
         "anthropic": "resilio.providers.llm.anthropic:AnthropicProvider",
+    },
+    "confidence": {
+        "weighted_rules": "resilio.scoring.confidence:WeightedRuleScorer",
     },
 }
 
@@ -154,6 +159,11 @@ def register_llm(name: str) -> Callable[[type[T]], type[T]]:
     return _decorator("llm", name)
 
 
+def register_confidence_scorer(name: str) -> Callable[[type[T]], type[T]]:
+    """Class decorator registering a :class:`BaseConfidenceScorer`."""
+    return _decorator("confidence", name)
+
+
 # --------------------------------------------------------------------------- #
 # Factories
 # --------------------------------------------------------------------------- #
@@ -189,3 +199,11 @@ def build_llm_provider(settings: Settings) -> BaseLLMProvider:
     cls: type[BaseLLMProvider] = registry.resolve("llm", settings.llm_provider)
     logger.info("llm provider: %s", cls.__name__)
     return cls.from_settings(settings)
+
+
+def build_confidence_scorer(settings: Settings) -> BaseConfidenceScorer:
+    """Load ``confidence.yaml`` (or ``CONFIDENCE_CONFIG_PATH``) and build its scorer."""
+    section = load_confidence_config(settings.confidence_config_path).confidence
+    cls: type[BaseConfidenceScorer] = registry.resolve("confidence", section.scorer)
+    logger.info("confidence scorer: %s", cls.__name__)
+    return cls.from_config(section)

@@ -176,10 +176,11 @@ async def list_providers(container: ContainerDep) -> dict[str, Any]:
             "remediation": deps.remediation.name,
             "notifiers": container.settings.notifiers,
             "llm": deps.llm.name,
+            "confidence": deps.confidence_scorer.name,
         },
         "available": {
             kind: registry.available(kind)
-            for kind in ("telemetry", "remediation", "notifiers", "llm")
+            for kind in ("telemetry", "remediation", "notifiers", "llm", "confidence")
         },
         "mock_mode": container.settings.is_mock_mode,
     }
@@ -265,7 +266,8 @@ async def review_page(incident_id: str, container: ContainerDep) -> HTMLResponse
         "Root cause": hypothesis.get("root_cause", "-"),
         "Summary": hypothesis.get("summary", "-"),
         "Action": f"{hypothesis.get('action', '-')} {hypothesis.get('target_sha') or ''}",
-        "Confidence": str(hypothesis.get("confidence", "-")),
+        "Confidence": str((record.summary.get("confidence_breakdown") or {}).get("summary", "-")),
+        "Model said": str(record.summary.get("llm_confidence", "-")),
         "Risk": f"{policy.get('risk', '-')} ({'; '.join(policy.get('reasons', []))})",
     }
     return HTMLResponse(

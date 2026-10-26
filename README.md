@@ -262,7 +262,36 @@ to the scenario file.
 | `resilio_token_savings_percent` | prompt-token reduction from fingerprinting |
 | `resilio_evaluator_corrections_total` | hallucinated or ungrounded hypotheses sent back |
 | `resilio_resolution_duration_seconds{status}` | alert → terminal state |
+| `resilio_confidence_score` | rule-based confidence of accepted hypotheses |
+| `resilio_llm_confidence_delta` | rule-based minus the model's self-reported confidence |
 | `resilio_hitl_pending`, `resilio_incidents_deduplicated_total`, `resilio_llm_tokens_total`, `resilio_node_duration_seconds`, `resilio_provider_errors_total` | operations |
+
+## Tuning confidence
+
+The confidence that decides whether an action needs one more risk tier of approval is computed from
+verified facts, not taken from the LLM ([ADR 0003](docs/ADR/0003-rule-based-confidence.md)): a weighted
+sum of deploy timing, the share of errors the cited evidence covers, the judge's score, whether it was
+right first time, and similarity to past incidents with the same root cause, followed by cap / floor /
+multiply rules. Every incident shows the breakdown:
+
+```
+confidence  0.82 (deploy timing +0.30, judge +0.25, dominant error +0.15, past match +0.08, first try +0.05); model said 0.97
+```
+
+To change the weights or rules, copy [`confidence.example.yaml`](confidence.example.yaml) to
+`confidence.yaml` (or point `CONFIDENCE_CONFIG_PATH` at it). The file is validated at startup. In Docker,
+mount it into the working directory, e.g. in a `docker-compose.override.yml`:
+
+```yaml
+services:
+  api:
+    volumes:
+      - ./confidence.yaml:/app/confidence.yaml:ro
+```
+
+Create the file before starting: if it doesn't exist, Docker mounts an empty directory there instead.
+The [contributor guide](docs/CONTRIBUTING.md#tuning-confidence) walks through a full example and shows
+how to plug in your own scorer.
 
 ## Safety defaults
 
@@ -270,6 +299,8 @@ to the scenario file.
   a human. Set it to `none` for a suggest-only rollout.
 - Rollbacks may only target the deploy *before* the one correlated with error onset, never a model-invented SHA.
 - No safe action (third-party outage, expired certificate) means escalation, not a guess.
+- Confidence comes from verified signals, never from the model's opinion of itself, and it can only add
+  a risk tier: even a perfect score does not skip approval for a rollback.
 - Secrets and PII are redacted before evidence reaches any LLM and from every log line.
 
 ## Development

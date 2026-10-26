@@ -17,6 +17,7 @@ import json
 import os
 import time
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -113,6 +114,41 @@ def _print_timeline(entries: list[dict[str, Any]]) -> None:
     console.print(table)
 
 
+def _confidence(summary: dict[str, Any]) -> str:
+    value = summary.get("confidence")
+    return f"{float(value):.2f}" if isinstance(value, int | float) else "-"
+
+
+def _print_confidence(summary: dict[str, Any]) -> None:
+    breakdown = summary.get("confidence_breakdown") or {}
+    if not breakdown.get("breakdown"):
+        return
+    table = Table(
+        title=f"Confidence {_confidence(summary)} (model said {summary.get('llm_confidence')})",
+        expand=False,
+    )
+    for column in ("signal", "raw", "weight", "points", "note"):
+        table.add_column(column, justify="left" if column in ("signal", "note") else "right")
+    for row in breakdown["breakdown"]:
+        raw = row.get("raw_score")
+        table.add_row(
+            row.get("signal", ""),
+            "-" if raw is None else f"{raw:.2f}",
+            f"{row.get('weight', 0):.2f}",
+            f"{row.get('points', 0):+.3f}",
+            row.get("note", ""),
+        )
+    for rule in breakdown.get("rules", []):
+        table.add_row(
+            f"rule: {rule['when']}",
+            f"{rule['before']:.2f}",
+            "",
+            f"-> {rule['after']:.2f}",
+            f"{rule['effect']} {rule['amount']:g}",
+        )
+    console.print(table)
+
+
 def _print_summary(record: IncidentRecord) -> None:
     hypothesis = record.summary.get("hypothesis") or {}
     stats = record.summary.get("token_stats") or {}
@@ -120,11 +156,12 @@ def _print_summary(record: IncidentRecord) -> None:
         f"\n[bold]Incident[/] {record.id}  {_status(record.status.value)}\n"
         f"[bold]Root cause[/] {hypothesis.get('root_cause', '-')}  "
         f"[bold]action[/] {hypothesis.get('action', '-')}  "
-        f"[bold]confidence[/] {hypothesis.get('confidence', '-')}\n"
+        f"[bold]confidence[/] {_confidence(record.summary)}\n"
         f"[bold]Token savings[/] {stats.get('savings_percent', 0)}% "
         f"({stats.get('raw_tokens', 0)} -> {stats.get('compact_tokens', 0)} tokens)  "
         f"[bold]evaluator attempts[/] {record.summary.get('evaluator_attempts', 0)}"
     )
+    _print_confidence(record.summary)
     if record.summary.get("escalation_reason"):
         console.print(f"[bold red]Escalation[/] {record.summary['escalation_reason']}")
 
@@ -376,7 +413,7 @@ def status_cmd(
             _status(record.status.value),
             action,
             policy.get("risk", "-"),
-            str(hypothesis.get("confidence", "-")),
+            _confidence(record.summary),
             _age(record.updated_at),
         ]
         if use_db:
@@ -438,6 +475,35 @@ def show_cmd(incident_id: str, api_url: ApiUrl = DEFAULT_API, api_token: ApiToke
 # --------------------------------------------------------------------------- #
 # eval
 # --------------------------------------------------------------------------- #
+class ConfidenceSource(StrEnum):
+    LLM = "llm"
+    RULES = "rules"
+
+
+def _print_calibration(
+    calibration: dict[str, dict[str, float]], only: ConfidenceSource | None
+) -> None:
+    sources = [only] if only else list(ConfidenceSource)
+    labels = {ConfidenceSource.LLM: "LLM self-report", ConfidenceSource.RULES: "rule-based"}
+    n = int(calibration.get("rules", {}).get("n", 0))
+    table = Table(title=f"Confidence calibration (accepted RCAs, n={n})")
+    table.add_column("metric")
+    for source in sources:
+        table.add_column(labels[source], justify="right")
+    for key, name in (
+        ("brier", "Brier score (lower is better)"),
+        ("ece", "expected calibration error, 10 bins (lower is better)"),
+        ("mean_confidence", "mean confidence"),
+        ("accuracy", "root cause actually correct"),
+    ):
+        table.add_row(name, *(f"{calibration.get(s.value, {}).get(key, 0.0):.3f}" for s in sources))
+    console.print(table)
+    console.print(
+        "[dim]Synthetic scenarios share templates with the mock LLM and the default rules: "
+        "a sanity check, not proof. Re-run with a real model (--llm).[/]"
+    )
+
+
 def _pct(value: float) -> str:
     return f"{value * 100:.1f}%"
 
@@ -473,6 +539,10 @@ def eval_run(
     max_hallucination_escape: Annotated[
         float, typer.Option(help="Exit non-zero if the hallucination escape rate exceeds this.")
     ] = 1.0,
+    confidence_source: Annotated[
+        ConfidenceSource | None,
+        typer.Option(help="Show calibration for one source only (default: side by side)."),
+    ] = None,
 ) -> None:
     """Execute the offline benchmark and print judge precision and hallucination rates."""
     from resilio.providers.registry import build_llm_provider
@@ -546,6 +616,7 @@ def eval_run(
                 str(int(row["corrections"])),
             )
         console.print(per_type)
+        _print_calibration(report.calibration, confidence_source)
 
     failed = (
         report.judge_precision < min_precision
@@ -563,6 +634,7 @@ def eval_run(
 def providers_cmd() -> None:
     """List available providers (built-in, registered and installed plugins)."""
     from resilio.providers.registry import registry
+    from resilio.scoring.confidence import load_confidence_config
 
     settings = get_settings()
     active = {
@@ -570,12 +642,13 @@ def providers_cmd() -> None:
         "remediation": settings.remediation_provider,
         "notifiers": ",".join(settings.notifiers),
         "llm": settings.llm_provider,
+        "confidence": load_confidence_config(settings.confidence_config_path).confidence.scorer,
     }
     table = Table(title="Providers")
     table.add_column("kind", style="bold")
     table.add_column("active", style="green")
     table.add_column("available")
-    for kind in ("telemetry", "remediation", "notifiers", "llm"):
+    for kind in ("telemetry", "remediation", "notifiers", "llm", "confidence"):
         table.add_row(kind, active[kind], ", ".join(registry.available(kind)))
     console.print(table)
 

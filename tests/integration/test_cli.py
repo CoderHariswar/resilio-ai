@@ -93,7 +93,9 @@ def test_simulate_remote_status_approve_show(api: TestClient) -> None:
     assert "awaiting_approval" in invoke("status", "--all").output
     assert "approved" in invoke("approve", incident_id, "--approver", "me").output
     wait_for(api, incident_id, "resolved")
-    assert "resolved" in invoke("show", incident_id).output
+    shown = invoke("show", incident_id).output
+    assert "resolved" in shown
+    assert "Confidence" in shown and "deploy_timing" in shown and "model said" in shown
 
     duplicate = invoke("dev", "simulate", "-t", "config-drift", "-s", "web", "--no-follow").output
     assert "Deduplicated" not in duplicate, "resolved incidents release their dedupe key"
@@ -137,9 +139,16 @@ def test_eval_seed_and_run(tmp_path: Path) -> None:
     table = invoke("eval", "run", "--scenarios", str(path)).output
     assert "hallucination escape rate" in table
     assert "By incident type" in table
+    assert "Confidence calibration" in table
+    assert "LLM self-report" in table and "rule-based" in table
+    assert "sanity check, not proof" in table
+
+    only_rules = invoke("eval", "run", "--count", "10", "--confidence-source", "rules").output
+    assert "rule-based" in only_rules and "LLM self-report" not in only_rules
 
     report = json.loads(invoke("eval", "run", "--count", "10", "--json").output)
     assert report["scenarios"] == 10
+    assert set(report["calibration"]) == {"llm", "rules"}
 
     gated = runner.invoke(cli.app, ["eval", "run", "--count", "10", "--min-precision", "1.01"])
     assert gated.exit_code == 1

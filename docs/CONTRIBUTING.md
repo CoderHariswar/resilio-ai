@@ -169,6 +169,75 @@ registry discovers it. The groups are `resilio.telemetry`,
 `resilio.remediation`, `resilio.notifiers` and `resilio.llm`.
 `resilio providers` lists everything that was discovered.
 
+## Tuning confidence
+
+The policy engine's confidence comes from
+[`confidence.yaml`](../confidence.example.yaml) (copy the example, or set
+`CONFIDENCE_CONFIG_PATH`). It is
+
+```
+value = sum(raw_score x weight)   then each matching rule, in order
+```
+
+**Worked example.** A rollback where the suspect deploy landed 9 minutes
+before the error onset, the cited fingerprint groups hold 6,100 of 8,412
+error lines, the judge scored 0.82, the first hypothesis needed one
+revision, and the closest past incident with the same root cause has
+similarity 0.78:
+
+| Signal | Raw score | Weight | Points |
+|---|---|---|---|
+| `deploy_timing`: 9 min ≤ `strong_window_min` (30) | 1.00 | 0.30 | 0.300 |
+| `dominant_error`: 6,100 / 8,412 | 0.725 | 0.20 | 0.145 |
+| `judge_score` | 0.82 | 0.30 | 0.246 |
+| `first_try`: 1 revision → `scores[1]` | 0.50 | 0.10 | 0.050 |
+| `past_match`: 0.78 ≥ `min_similarity` (0.5) | 0.78 | 0.10 | 0.078 |
+| **Total** | | | **0.819 → 0.82** |
+
+No rule matches (there is a suspect deploy and the judge answered), so the
+confidence is 0.82. That clears `MIN_AUTO_CONFIDENCE` (0.8), so it adds no
+risk tier, but a rollback is medium risk and still asks a human unless you
+raise `AUTO_APPROVE_MAX_RISK`.
+
+Common adjustments:
+
+- **Trust deploy correlation more:** raise `deploy_timing.weight` and lower
+  another weight by the same amount. Weights must sum to 1.
+- **Score deploy timing for restarts too:** set `deploy_timing.actions: null`.
+- **Be stricter after corrections:** add
+  `- {when: revisions_at_least:1, cap: 0.7}`.
+- **Never auto-scale without a fresh judge verdict:** add
+  `- {when: judge_unavailable, cap: 0.5}`.
+
+Conditions are a fixed set (`rollback_without_suspect_deploy`,
+`judge_unavailable`, `action_is:<action>`, `revisions_at_least:<n>`) on
+purpose: the file never contains executable expressions. Measure a change
+with `resilio eval run --llm <your model>`, which prints the Brier score and
+calibration error of the rule-based score next to the model's own.
+
+To replace the scoring entirely, subclass `BaseConfidenceScorer`:
+
+```python
+from resilio.providers import register_confidence_scorer
+from resilio.scoring.confidence import (
+    BaseConfidenceScorer,
+    ConfidenceResult,
+    ConfidenceSignals,
+)
+
+
+@register_confidence_scorer("judge_only")
+class JudgeOnlyScorer(BaseConfidenceScorer):
+    name = "judge_only"
+
+    def score(self, signals: ConfidenceSignals) -> ConfidenceResult:
+        return ConfidenceResult(value=signals.judge_score or 0.0, breakdown=())
+```
+
+and select it with `confidence.scorer: judge_only`, or ship it in a package
+under the `resilio.confidence` entry-point group. Scorers must be pure: no
+I/O, and the same signals always give the same result.
+
 ## Testing
 
 ```bash

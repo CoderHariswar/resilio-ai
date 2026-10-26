@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Rule-based confidence scoring: a `confidence` graph node scores each accepted hypothesis from
+  verified signals (deploy timing, cited error share, judge score, revisions, same-cause past
+  incidents) with weights and cap/floor/multiply rules from `confidence.yaml` or
+  `CONFIDENCE_CONFIG_PATH`. See `confidence.example.yaml` and ADR 0003.
+- Pluggable confidence scorers: `@register_confidence_scorer` and the `resilio.confidence`
+  entry-point group.
+- The confidence breakdown appears in the timeline, approval and auto-remediation messages,
+  `resilio show`, `resilio status` and the review page.
+- Metrics `resilio_confidence_score` and `resilio_llm_confidence_delta`.
+- `resilio eval run` reports Brier score and expected calibration error for the model's
+  confidence and the rule-based score (`--confidence-source llm|rules` to show one).
+
+### Changed
+- The policy engine uses the rule-based confidence. The model's self-reported value is kept as
+  `llm_confidence` for comparison only.
+- With the default rules, a restart or scale-up whose first hypothesis needed a revision usually
+  scores below `MIN_AUTO_CONFIDENCE` and now asks for approval.
+
 ## [0.1.0] - 2026-10-24
 
 ### Added

@@ -13,6 +13,7 @@ from langgraph.types import interrupt
 
 from resilio.graph.deps import WorkflowDeps
 from resilio.graph.nodes._common import NodeFn, instrumented
+from resilio.graph.nodes.policy_node import confidence_line
 from resilio.graph.state import IncidentState, timeline
 from resilio.models import ApprovalDecision, Notification, NotificationKind, Severity
 
@@ -28,7 +29,8 @@ def make_request_approval_node(deps: WorkflowDeps) -> NodeFn:
         fields = {
             "root cause": hypothesis.get("root_cause", "unknown"),
             "action": hypothesis.get("action", "none"),
-            "confidence": f"{float(hypothesis.get('confidence', 0)):.2f}",
+            "confidence": confidence_line(state),
+            "model said": str(state.get("llm_confidence", "-")),
             "risk": policy.get("risk", "unknown"),
             "why approval": "; ".join(policy.get("reasons", [])),
             "approve via CLI": f"resilio approve {incident_id}",

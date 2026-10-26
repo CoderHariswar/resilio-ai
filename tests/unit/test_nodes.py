@@ -280,7 +280,7 @@ async def test_evaluator_node_counts_corrections_and_routes(deps: WorkflowDeps) 
     assert router({**state, **exhausted}) == "escalate"  # type: ignore[typeddict-item]
 
     accepted = await node({**state, "hypothesis": _hyp()})
-    assert router({**state, **accepted}) == "policy"  # type: ignore[typeddict-item]
+    assert router({**state, **accepted}) == "confidence"  # type: ignore[typeddict-item]
 
 
 # ---------------------------------------------------------------- policy
@@ -330,13 +330,17 @@ def test_assess_risk_matrix(
     decision: str,
 ) -> None:
     settings = Settings(_env_file=None, **settings_kw)  # type: ignore[call-arg]
-    result = assess_risk(settings, event, hypothesis, {"judge_available": True})
+    result = assess_risk(
+        settings, event, hypothesis, {"judge_available": True}, confidence=hypothesis["confidence"]
+    )
     assert (result["risk"], result["decision"]) == (risk, decision), result["reasons"]
 
 
 def test_assess_risk_penalizes_missing_judge() -> None:
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
-    result = assess_risk(settings, _event(), _hyp(action="restart"), {"judge_available": False})
+    result = assess_risk(
+        settings, _event(), _hyp(action="restart"), {"judge_available": False}, confidence=0.9
+    )
     assert result["risk"] == "medium"
     assert "LLM judge unavailable" in result["reasons"]
 
@@ -347,10 +351,13 @@ async def test_policy_node_notifies_on_auto(deps: WorkflowDeps, notifier: MockNo
         "event": _event(),
         "hypothesis": _hyp(action="restart"),
         "evaluation": {},
+        "confidence": 0.9,
+        "confidence_breakdown": {"summary": "0.90 (judge +0.43)"},
     }
     update = await make_policy_node(deps)(state)
     assert update["policy"]["decision"] == "auto"
     assert notifier.kinds() == [NotificationKind.INFO]
+    assert notifier.sent[0].fields["confidence"] == "0.90 (judge +0.43)"
     assert route_after_policy({**state, **update}) == "remediation"  # type: ignore[typeddict-item]
 
     escalate = await make_policy_node(deps)({**state, "hypothesis": _hyp(action="none")})
@@ -359,12 +366,53 @@ async def test_policy_node_notifies_on_auto(deps: WorkflowDeps, notifier: MockNo
     assert route_after_policy({"policy": {"decision": "approval"}}) == "request_approval"
 
 
+async def test_policy_uses_rule_based_confidence_not_the_llms(deps: WorkflowDeps) -> None:
+    state: IncidentState = {
+        "incident_id": "i",
+        "event": _event(),
+        "hypothesis": _hyp(action="restart", confidence=0.99),
+        "evaluation": {},
+        "confidence": 0.4,
+    }
+    update = await make_policy_node(deps)(state)
+    assert (update["policy"]["risk"], update["policy"]["decision"]) == ("medium", "approval")
+    assert "confidence 0.40 below 0.8" in update["policy"]["reasons"]
+    missing = await make_policy_node(deps)({k: v for k, v in state.items() if k != "confidence"})  # type: ignore[arg-type]
+    assert missing["policy"]["decision"] == "approval"
+
+
+async def test_confidence_node_scores_and_explains(deps: WorkflowDeps) -> None:
+    from resilio.graph.nodes.confidence_node import make_confidence_node
+
+    before = metric("resilio_confidence_score_count")
+    state: IncidentState = {
+        "incident_id": "i",
+        "hypothesis": _hyp(confidence=0.95),
+        "evaluation": {"score": 0.9, "judge_available": True},
+        "trace_groups": GROUPS,
+        "token_stats": {"raw_traces": 9},
+        "deploy_onset_gap_minutes": 5.0,
+        "evaluator_attempts": 1,
+    }
+    update = await make_confidence_node(deps)(state)
+    # deploy 0.30 + cited 1.0*0.20 + judge 0.9*0.30 + first try 0.10 + no history 0
+    assert update["confidence"] == 0.87
+    assert update["llm_confidence"] == 0.95
+    assert update["confidence_breakdown"]["summary"].startswith("0.87 (deploy timing +0.30")
+    assert update["timeline"][0]["node"] == "confidence"
+    assert update["timeline"][0]["message"].endswith("model said 0.95")
+    assert metric("resilio_confidence_score_count") == before + 1
+
+
 async def test_request_approval_sends_links(deps: WorkflowDeps, notifier: MockNotifier) -> None:
     state: IncidentState = {
         "incident_id": "inc-9",
         "event": _event(),
         "hypothesis": _hyp(),
         "policy": {"risk": "medium", "reasons": ["rollback base risk medium"]},
+        "confidence": 0.82,
+        "llm_confidence": 0.99,
+        "confidence_breakdown": {"summary": "0.82 (deploy timing +0.30, judge +0.25)"},
     }
     update = await make_request_approval_node(deps)(state)
     assert update["status"] == "awaiting_approval"
@@ -372,6 +420,8 @@ async def test_request_approval_sends_links(deps: WorkflowDeps, notifier: MockNo
     assert sent.kind == NotificationKind.APPROVAL_REQUEST
     assert sent.links["Review"].endswith("/ui/incidents/inc-9")
     assert sent.fields["target sha"] == "2" * 40
+    assert sent.fields["confidence"] == "0.82 (deploy timing +0.30, judge +0.25)"
+    assert sent.fields["model said"] == "0.99"
     assert route_after_approval({"approval": {"approved": True}}) == "remediation"
     assert route_after_approval({"approval": {"approved": False}}) == "escalate"
 

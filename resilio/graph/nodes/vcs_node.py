@@ -8,6 +8,7 @@ synthesizer may only roll back to a SHA chosen here - never one it invents.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -22,8 +23,8 @@ logger = logging.getLogger(__name__)
 SUSPECT_WINDOW = timedelta(hours=6)
 
 
-def error_onset(event: IncidentEvent, groups: list[dict[str, Any]]) -> datetime:
-    """Earliest ``first_seen`` across evidence groups, else the alert time."""
+def onset_from_groups(groups: Sequence[Mapping[str, Any]]) -> datetime | None:
+    """Earliest timezone-aware ``first_seen`` across evidence groups."""
     onsets: list[datetime] = []
     for group in groups:
         try:
@@ -31,7 +32,12 @@ def error_onset(event: IncidentEvent, groups: list[dict[str, Any]]) -> datetime:
         except ValueError:
             continue
     aware = [o for o in onsets if o.tzinfo is not None]
-    return min(aware) if aware else event.occurred_at
+    return min(aware) if aware else None
+
+
+def error_onset(event: IncidentEvent, groups: list[dict[str, Any]]) -> datetime:
+    """Earliest ``first_seen`` across evidence groups, else the alert time."""
+    return onset_from_groups(groups) or event.occurred_at
 
 
 def correlate(
@@ -59,7 +65,9 @@ def make_vcs_node(deps: WorkflowDeps) -> NodeFn:
             logger.warning("deployment history unavailable for %s: %s", event.service, exc)
             deployments = []
 
-        suspect, target = correlate(deployments, error_onset(event, state.get("trace_groups", [])))
+        onset = error_onset(event, state.get("trace_groups", []))
+        suspect, target = correlate(deployments, onset)
+        gap = round((onset - suspect.deployed_at).total_seconds() / 60, 2) if suspect else None
         if suspect:
             message = (
                 f"onset follows deploy {suspect.sha[:8]} ({suspect.message!r}); "
@@ -71,6 +79,7 @@ def make_vcs_node(deps: WorkflowDeps) -> NodeFn:
             "deployments": [d.model_dump(mode="json") for d in deployments],
             "suspect_deployment": suspect.model_dump(mode="json") if suspect else None,
             "rollback_target": target,
+            "deploy_onset_gap_minutes": gap,
             "timeline": timeline("vcs", message),
         }
 

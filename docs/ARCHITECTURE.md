@@ -82,7 +82,8 @@ stateDiagram-v2
     synthesizer --> evaluator: hypothesis
     evaluator --> synthesizer: rejected (attempts ≤ MAX_EVALUATOR_RETRIES)
     evaluator --> escalate: rejected (retries exhausted)
-    evaluator --> policy: accepted
+    evaluator --> confidence: accepted
+    confidence --> policy: rule-based score
     policy --> remediation: risk ≤ AUTO_APPROVE_MAX_RISK
     policy --> request_approval: risk above threshold
     policy --> escalate: no safe action
@@ -100,6 +101,7 @@ stateDiagram-v2
 | `vcs` | Read deployment history; if the newest deploy precedes error onset (≤ 6 h), mark it *suspect* and pick the previous SHA as the only legal rollback target | [`vcs_node.py`](../resilio/graph/nodes/vcs_node.py) |
 | `synthesizer` | LLM proposes `{root_cause, evidence[], action, target_sha, confidence}` | [`synthesizer_node.py`](../resilio/graph/nodes/synthesizer_node.py) |
 | `evaluator` | Deterministic grounding checks + LLM-as-a-judge; rejections carry revision feedback | [`evaluator_node.py`](../resilio/graph/nodes/evaluator_node.py) |
+| `confidence` | Score the accepted hypothesis from verified signals; keep the model's own number as `llm_confidence` | [`confidence_node.py`](../resilio/graph/nodes/confidence_node.py) |
 | `policy` | Risk tiering and the auto / approval / escalate decision | [`policy_node.py`](../resilio/graph/nodes/policy_node.py) |
 | `request_approval` / `approval_gate` | Notify on-call, then `interrupt()` until a human decides | [`approval_node.py`](../resilio/graph/nodes/approval_node.py) |
 | `remediation` | Execute rollback / restart / scale, then `verify_health` | [`remediation_node.py`](../resilio/graph/nodes/remediation_node.py) |
@@ -192,7 +194,7 @@ Quality is measured offline by `resilio eval run` (see
 | `rollback` | base **medium** |
 | service in `CRITICAL_SERVICES` | +1 tier |
 | alert severity `critical` | +1 tier |
-| confidence < `MIN_AUTO_CONFIDENCE` | +1 tier |
+| rule-based confidence < `MIN_AUTO_CONFIDENCE` | +1 tier |
 | judge unavailable | +1 tier |
 | environment ≠ `production` | −1 tier (floor low) |
 | action `none` | always escalate |
@@ -200,6 +202,29 @@ Quality is measured offline by `resilio eval run` (see
 The decision is `auto` when the tier is ≤ `AUTO_APPROVE_MAX_RISK` (default
 `low`), otherwise `approval`. Set `AUTO_APPROVE_MAX_RISK=none` for a
 "suggest-only" rollout where every action needs a human.
+
+## Confidence scoring
+
+The confidence above is computed by the `confidence` node, never taken from
+the LLM ([ADR 0003](ADR/0003-rule-based-confidence.md)). The default
+`WeightedRuleScorer` ([`scoring/confidence.py`](../resilio/scoring/confidence.py))
+weights five signals:
+
+| Signal | Raw score | Default weight |
+|---|---|---|
+| `deploy_timing` | 1.0 if the suspect deploy is ≤ 30 min before onset, 0.5 if ≤ 6 h, else 0; rollbacks only | 0.30 |
+| `dominant_error` | share of all error lines in the cited fingerprint groups | 0.20 |
+| `judge_score` | the judge's score; skipped when the judge is unavailable | 0.30 |
+| `first_try` | 1.0 / 0.5 / 0.25 for 0 / 1 / 2+ revisions | 0.10 |
+| `past_match` | similarity of the closest past incident with the same root cause, if ≥ 0.5 | 0.10 |
+
+A skipped signal's weight is shared among the others in proportion. Then
+rules apply in order: by default a rollback with no suspect deploy is capped
+at 0.4, and a missing judge multiplies the score by 0.8. Weights and rules are
+read from `confidence.yaml` ([example](../confidence.example.yaml)); see the
+[contributor guide](CONTRIBUTING.md#tuning-confidence) for a worked example.
+Confidence only feeds the `+1 tier` rule above, so it can never skip the
+approval gate on its own.
 
 ## Token economics
 
@@ -319,6 +344,8 @@ fraction of first attempts so the evaluator loop is visible).
 | `resilio_llm_tokens_total{provider,kind}` | counter | prompt / completion tokens |
 | `resilio_node_duration_seconds{node}` | histogram | per-node latency |
 | `resilio_provider_errors_total{kind,provider}` | counter | upstream failures |
+| `resilio_confidence_score` | histogram | rule-based confidence of accepted hypotheses |
+| `resilio_llm_confidence_delta` | histogram | rule-based minus the model's self-reported confidence |
 
 Useful alerts on the agent itself: `resilio_hitl_pending > 0 for 30m`
 (approvals are being ignored), a rising
@@ -353,6 +380,7 @@ resilio/
 ├── graph/               state schema, workflow, prompts, nodes
 ├── providers/           ABCs, registry, http helper, telemetry/ remediation/ notifications/ llm/
 ├── core/                database (Postgres + in-memory), queue, metrics, security
+├── scoring/             rule-based confidence scorer and its YAML config
 ├── utils/               log_sanitizer, embeddings, llm_json, evaluator_benchmark
 ├── scenarios.py         synthetic outage library shared by mocks and the benchmark
 └── cli.py               `resilio` developer CLI

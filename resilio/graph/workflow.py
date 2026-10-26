@@ -2,9 +2,9 @@
 
 ::
 
-    START -> telemetry -> vcs -> synthesizer -> evaluator --accepted--> policy
-                                    ^              |                     |
-                                    +--rejected----+ (<= MAX_RETRIES)    |
+    START -> telemetry -> vcs -> synthesizer -> evaluator --accepted--> confidence -> policy
+                                    ^              |                                  |
+                                    +--rejected----+ (<= MAX_RETRIES)                 |
                                                    +--exhausted--> escalate
     policy --auto--> remediation --healthy--> END
     policy --approval--> request_approval -> approval_gate (interrupt) --approved--> remediation
@@ -28,6 +28,7 @@ from resilio.graph.nodes.approval_node import (
     make_request_approval_node,
     route_after_approval,
 )
+from resilio.graph.nodes.confidence_node import make_confidence_node
 from resilio.graph.nodes.escalation_node import make_escalation_node
 from resilio.graph.nodes.evaluator_node import make_evaluation_router, make_evaluator_node
 from resilio.graph.nodes.policy_node import make_policy_node, route_after_policy
@@ -54,6 +55,7 @@ def build_workflow(deps: WorkflowDeps, checkpointer: BaseCheckpointSaver[Any] | 
         "vcs": make_vcs_node(deps),
         "synthesizer": make_synthesizer_node(deps),
         "evaluator": make_evaluator_node(deps),
+        "confidence": make_confidence_node(deps),
         "policy": make_policy_node(deps),
         "request_approval": make_request_approval_node(deps),
         APPROVAL_NODE: make_approval_gate_node(deps),
@@ -70,8 +72,9 @@ def build_workflow(deps: WorkflowDeps, checkpointer: BaseCheckpointSaver[Any] | 
     graph.add_conditional_edges(
         "evaluator",
         make_evaluation_router(deps),
-        {"policy": "policy", "synthesizer": "synthesizer", "escalate": "escalate"},
+        {"confidence": "confidence", "synthesizer": "synthesizer", "escalate": "escalate"},
     )
+    graph.add_edge("confidence", "policy")
     graph.add_conditional_edges(
         "policy",
         route_after_policy,
