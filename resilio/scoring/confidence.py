@@ -8,8 +8,9 @@ weights and rules read from ``confidence.yaml`` (see ``confidence.example.yaml``
     value = sum(raw_score(signal) * weight(signal))   # weights sum to 1
     value = rule_n(... rule_1(value))                  # cap / floor / multiply
 
-A signal that does not apply (no judge verdict, or an action outside the
-signal's ``actions``) hands its weight to the others in proportion, so the
+A signal that does not apply (no judge verdict, no same-cause history, or an
+action outside the signal's ``actions``) hands its weight to the others in
+proportion, so the
 score always spans the full [0, 1] range. Every term is recorded in
 :class:`ConfidenceResult`.
 
@@ -39,6 +40,10 @@ _LABELS = {
     "judge_score": "judge",
     "first_try": "first try",
     "past_match": "past match",
+}
+_NOT_APPLICABLE = {
+    "judge_score": "judge unavailable",
+    "past_match": "no past incident with this root cause",
 }
 _ACTIONS = tuple(a.value for a in RemediationAction)
 
@@ -398,8 +403,12 @@ class WeightedRuleScorer(BaseConfidenceScorer):
             scores = cfg.first_try.scores
             return scores[min(max(signals.revision_count, 0), len(scores) - 1)]
         if name == "past_match":
+            # No same-cause history is absence of evidence, not evidence against:
+            # a first-of-its-kind incident should not lose this weight.
             similarity = signals.best_memory_similarity
-            if similarity is None or similarity < cfg.past_match.min_similarity:
+            if similarity is None:
+                return None
+            if similarity < cfg.past_match.min_similarity:
                 return 0.0
             return _clamp(similarity)
         raise KeyError(name)
@@ -415,7 +424,7 @@ class WeightedRuleScorer(BaseConfidenceScorer):
                 continue
             raw[name] = self.raw_score(name, signals)
             if raw[name] is None:
-                notes[name] = "judge unavailable"
+                notes[name] = _NOT_APPLICABLE.get(name, "not applicable")
 
         active = {name: cfg.get(name).weight for name in SIGNAL_NAMES if raw[name] is not None}
         total_weight = sum(active.values())

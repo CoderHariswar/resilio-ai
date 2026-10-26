@@ -12,8 +12,9 @@
 #
 #   value = sum(raw_score x weight)   then each matching rule, in order
 #
-# A signal that doesn't apply (the judge was unavailable, or the action is not in
-# the signal's `actions`) gives its weight to the others in proportion.
+# A signal that doesn't apply (the judge was unavailable, there is no past
+# incident with the same root cause, or the action is not in the signal's
+# `actions`) gives its weight to the others in proportion.
 
 confidence:
   # Registered scorer to use; add your own with @register_confidence_scorer("name").
@@ -44,7 +45,7 @@ confidence:
       scores: [1.0, 0.5, 0.25]
 
     # Similarity of the closest past incident with the same root cause, if at
-    # least min_similarity; otherwise 0.0.
+    # least min_similarity, otherwise 0.0. Skipped when there is no such incident.
     past_match:
       weight: 0.10
       min_similarity: 0.5

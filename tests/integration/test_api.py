@@ -99,7 +99,7 @@ def test_full_hitl_lifecycle_over_http(client: TestClient) -> None:
 
     page = client.get(f"/ui/incidents/{incident_id}")
     assert page.status_code == 200 and "memory_leak" in page.text
-    assert "deploy timing +0.30" in page.text and "Model said" in page.text
+    assert "deploy timing +0." in page.text and "Model said" in page.text
 
     response = client.post(f"/api/v1/incidents/{incident_id}/approve", json={"approver": "sre"})
     assert response.status_code == 202

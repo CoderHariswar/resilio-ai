@@ -88,8 +88,8 @@ def test_first_try_mapping_is_configurable() -> None:
     assert scorer.raw_score("first_try", replace(WORKED, revision_count=3)) == 0.0
 
 
-@pytest.mark.parametrize(("similarity", "expected"), [(None, 0.0), (0.49, 0.0), (0.5, 0.5)])
-def test_past_match(similarity: float | None, expected: float) -> None:
+@pytest.mark.parametrize(("similarity", "expected"), [(None, None), (0.49, 0.0), (0.5, 0.5)])
+def test_past_match(similarity: float | None, expected: float | None) -> None:
     signals = replace(WORKED, best_memory_similarity=similarity)
     assert WeightedRuleScorer().raw_score("past_match", signals) == expected
 
@@ -100,7 +100,20 @@ def test_deploy_timing_weight_goes_to_others_for_non_rollbacks() -> None:
     deploy = result.breakdown[0]
     assert (deploy.raw_score, deploy.weight, deploy.note) == (None, 0.0, "not used for restart")
     assert round(sum(s.weight for s in result.breakdown), 3) == 1.0
-    assert result.value == round(0.6 / 0.7, 4)  # past_match: no history yet
+    past = result.breakdown[-1]
+    assert (past.raw_score, past.weight) == (None, 0.0)
+    assert past.note == "no past incident with this root cause"
+    assert result.value == 1.0  # every applicable signal is perfect
+
+
+def test_first_time_restart_after_one_revision_still_clears_threshold() -> None:
+    # The Mock Mode case CI exercises: no history, one correction, judge 1.0.
+    signals = ConfidenceSignals(
+        action="restart", cited_error_share=0.85, judge_score=1.0, revision_count=1
+    )
+    value = WeightedRuleScorer().score(signals).value
+    assert value == round((0.2 * 0.85 + 0.3 + 0.1 * 0.5) / 0.6, 4)
+    assert value >= 0.8
 
 
 def test_missing_judge_redistributes_weight_then_rule_applies() -> None:

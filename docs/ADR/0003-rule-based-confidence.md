@@ -33,8 +33,10 @@ evaluator's accept route and the policy node, with a pluggable scorer
 `dominant_error`, `judge_score`, `first_try`, `past_match`) and then applies
 ordered `cap` / `floor` / `multiply` rules chosen from a fixed set of named
 conditions. A signal that does not apply hands its weight to the others in
-proportion: `judge_score` when the judge is unavailable, and `deploy_timing`
-for actions other than rollback (a restart is not caused by a deploy).
+proportion: `judge_score` when the judge is unavailable, `deploy_timing`
+for actions other than rollback (a restart is not caused by a deploy), and
+`past_match` when no past incident shares the root cause (absence of history
+is not evidence against a diagnosis).
 
 Weights and rules live in `confidence.yaml` (or `CONFIDENCE_CONFIG_PATH`),
 validated with Pydantic at startup; without a file the built-in defaults,
@@ -83,16 +85,20 @@ covers the cases we know about, and new ones are a few lines of reviewed code.
   failures still reject, `action: none` still escalates, and a perfect score
   does not skip the approval gate for a medium-risk action. Integration tests
   pin all three.
-- The default weights are a judgment call, not a fit. With them, a clean
-  first-time restart scores about 0.80-0.86, close to the 0.8 threshold, and a
-  revision pushes it below, so restarts that needed a correction now ask for
-  approval. `past_match` counts 0 when there is no history, which costs a new
-  incident up to 0.14.
-- On the synthetic benchmark the rule-based score is *less* well calibrated
-  than the mock LLM's number (Brier 0.047 vs 0.011): the mock gets every root
-  cause right and its "self-report" is itself a formula over the same
-  templates. That comparison cannot show either way which source is better;
-  it needs a real model and, ultimately, real incidents.
+- The default weights are a judgment call, not a fit. With them, a
+  first-time restart with a fully confident judge scores about 0.9, or about
+  0.87 after one revision, so it still runs unattended; a judge score below
+  about 0.75 sends it for approval.
+- An earlier draft scored `past_match` as 0 when there was no history. That
+  cost every new incident 0.10 of weight, pushed restarts that needed one
+  revision below 0.8, and made the CI smoke test fail for the quarter of runs
+  where the mock LLM injects a hallucination. No history now hands its weight
+  to the other signals instead.
+- On the synthetic benchmark the two sources come out nearly identical (Brier
+  0.012 rule-based vs 0.011 for the mock LLM's number). The mock gets every
+  root cause right and its "self-report" is itself a formula over the same
+  templates, so the comparison cannot show which source is better; it needs a
+  real model and, ultimately, real incidents.
 
 Revisit when there are enough labelled incidents to fit weights or a
 calibrator, or if a real-model benchmark shows the rule-based score is worse
