@@ -93,7 +93,9 @@ def test_simulate_remote_status_approve_show(api: TestClient) -> None:
     assert "awaiting_approval" in invoke("status", "--all").output
     assert "approved" in invoke("approve", incident_id, "--approver", "me").output
     wait_for(api, incident_id, "resolved")
-    assert "resolved" in invoke("show", incident_id).output
+    shown = invoke("show", incident_id).output
+    assert "resolved" in shown
+    assert "Confidence" in shown and "deploy_timing" in shown and "model said" in shown
 
     duplicate = invoke("dev", "simulate", "-t", "config-drift", "-s", "web", "--no-follow").output
     assert "Deduplicated" not in duplicate, "resolved incidents release their dedupe key"

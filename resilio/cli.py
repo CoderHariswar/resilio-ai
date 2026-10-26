@@ -113,6 +113,41 @@ def _print_timeline(entries: list[dict[str, Any]]) -> None:
     console.print(table)
 
 
+def _confidence(summary: dict[str, Any]) -> str:
+    value = summary.get("confidence")
+    return f"{float(value):.2f}" if isinstance(value, int | float) else "-"
+
+
+def _print_confidence(summary: dict[str, Any]) -> None:
+    breakdown = summary.get("confidence_breakdown") or {}
+    if not breakdown.get("breakdown"):
+        return
+    table = Table(
+        title=f"Confidence {_confidence(summary)} (model said {summary.get('llm_confidence')})",
+        expand=False,
+    )
+    for column in ("signal", "raw", "weight", "points", "note"):
+        table.add_column(column, justify="left" if column in ("signal", "note") else "right")
+    for row in breakdown["breakdown"]:
+        raw = row.get("raw_score")
+        table.add_row(
+            row.get("signal", ""),
+            "-" if raw is None else f"{raw:.2f}",
+            f"{row.get('weight', 0):.2f}",
+            f"{row.get('points', 0):+.3f}",
+            row.get("note", ""),
+        )
+    for rule in breakdown.get("rules", []):
+        table.add_row(
+            f"rule: {rule['when']}",
+            f"{rule['before']:.2f}",
+            "",
+            f"-> {rule['after']:.2f}",
+            f"{rule['effect']} {rule['amount']:g}",
+        )
+    console.print(table)
+
+
 def _print_summary(record: IncidentRecord) -> None:
     hypothesis = record.summary.get("hypothesis") or {}
     stats = record.summary.get("token_stats") or {}
@@ -120,11 +155,12 @@ def _print_summary(record: IncidentRecord) -> None:
         f"\n[bold]Incident[/] {record.id}  {_status(record.status.value)}\n"
         f"[bold]Root cause[/] {hypothesis.get('root_cause', '-')}  "
         f"[bold]action[/] {hypothesis.get('action', '-')}  "
-        f"[bold]confidence[/] {hypothesis.get('confidence', '-')}\n"
+        f"[bold]confidence[/] {_confidence(record.summary)}\n"
         f"[bold]Token savings[/] {stats.get('savings_percent', 0)}% "
         f"({stats.get('raw_tokens', 0)} -> {stats.get('compact_tokens', 0)} tokens)  "
         f"[bold]evaluator attempts[/] {record.summary.get('evaluator_attempts', 0)}"
     )
+    _print_confidence(record.summary)
     if record.summary.get("escalation_reason"):
         console.print(f"[bold red]Escalation[/] {record.summary['escalation_reason']}")
 
@@ -376,7 +412,7 @@ def status_cmd(
             _status(record.status.value),
             action,
             policy.get("risk", "-"),
-            str(hypothesis.get("confidence", "-")),
+            _confidence(record.summary),
             _age(record.updated_at),
         ]
         if use_db:

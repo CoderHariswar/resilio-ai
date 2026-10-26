@@ -266,7 +266,8 @@ async def review_page(incident_id: str, container: ContainerDep) -> HTMLResponse
         "Root cause": hypothesis.get("root_cause", "-"),
         "Summary": hypothesis.get("summary", "-"),
         "Action": f"{hypothesis.get('action', '-')} {hypothesis.get('target_sha') or ''}",
-        "Confidence": str(hypothesis.get("confidence", "-")),
+        "Confidence": str((record.summary.get("confidence_breakdown") or {}).get("summary", "-")),
+        "Model said": str(record.summary.get("llm_confidence", "-")),
         "Risk": f"{policy.get('risk', '-')} ({'; '.join(policy.get('reasons', []))})",
     }
     return HTMLResponse(
