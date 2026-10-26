@@ -563,6 +563,7 @@ def eval_run(
 def providers_cmd() -> None:
     """List available providers (built-in, registered and installed plugins)."""
     from resilio.providers.registry import registry
+    from resilio.scoring.confidence import load_confidence_config
 
     settings = get_settings()
     active = {
@@ -570,12 +571,13 @@ def providers_cmd() -> None:
         "remediation": settings.remediation_provider,
         "notifiers": ",".join(settings.notifiers),
         "llm": settings.llm_provider,
+        "confidence": load_confidence_config(settings.confidence_config_path).confidence.scorer,
     }
     table = Table(title="Providers")
     table.add_column("kind", style="bold")
     table.add_column("active", style="green")
     table.add_column("available")
-    for kind in ("telemetry", "remediation", "notifiers", "llm"):
+    for kind in ("telemetry", "remediation", "notifiers", "llm", "confidence"):
         table.add_row(kind, active[kind], ", ".join(registry.available(kind)))
     console.print(table)
 

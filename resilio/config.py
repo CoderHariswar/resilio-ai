@@ -93,6 +93,11 @@ class Settings(BaseSettings):
     evaluator_min_score: float = 0.7
     auto_approve_max_risk: RiskLevel = RiskLevel.LOW
     min_auto_confidence: float = 0.8
+    confidence_config_path: str | None = Field(
+        default=None,
+        description="Confidence weights and rules (YAML). Default: ./confidence.yaml if present, "
+        "else built-in defaults (see confidence.example.yaml).",
+    )
     critical_services: CommaList = Field(default_factory=list)
     health_check_timeout_seconds: int = 120
     health_check_interval_seconds: float = 5.0

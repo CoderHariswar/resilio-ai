@@ -9,6 +9,7 @@ from resilio.providers.base import (
     LLMResponse,
 )
 from resilio.providers.registry import (
+    register_confidence_scorer,
     register_llm,
     register_notifier,
     register_remediation,
@@ -23,6 +24,7 @@ __all__ = [
     "BaseTelemetryProvider",
     "LLMRequest",
     "LLMResponse",
+    "register_confidence_scorer",
     "register_llm",
     "register_notifier",
     "register_remediation",

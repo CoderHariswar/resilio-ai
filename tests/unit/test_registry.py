@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -11,10 +12,12 @@ from resilio.providers.notifications.composite import CompositeNotifier
 from resilio.providers.notifications.terminal import TerminalNotifier
 from resilio.providers.registry import (
     UnknownProviderError,
+    build_confidence_scorer,
     build_llm_provider,
     build_notifier,
     build_remediation_provider,
     build_telemetry_provider,
+    register_confidence_scorer,
     register_llm,
     register_notifier,
     register_remediation,
@@ -22,6 +25,12 @@ from resilio.providers.registry import (
 from resilio.providers.remediation.mock import MockRemediationProvider
 from resilio.providers.telemetry.datadog import DatadogTelemetryProvider
 from resilio.providers.telemetry.mock import MockTelemetryProvider
+from resilio.scoring.confidence import (
+    BaseConfidenceScorer,
+    ConfidenceResult,
+    ConfidenceSignals,
+    WeightedRuleScorer,
+)
 
 
 def _settings(**kwargs: Any) -> Settings:
@@ -135,7 +144,39 @@ def test_runtime_registration_and_type_check() -> None:
         registry.register("telemetry", "bad", dict)
 
 
+def test_custom_confidence_scorer_is_picked_by_name(tmp_path: Path) -> None:
+    @register_confidence_scorer("unit-test-scorer")
+    class Constant(BaseConfidenceScorer):
+        name = "unit-test-scorer"
+
+        def score(self, signals: ConfidenceSignals) -> ConfidenceResult:
+            return ConfidenceResult(value=0.5, breakdown=())
+
+    config = tmp_path / "confidence.yaml"
+    config.write_text("confidence:\n  scorer: unit-test-scorer\n")
+    try:
+        assert "unit-test-scorer" in registry.available("confidence")
+        scorer = build_confidence_scorer(_settings(confidence_config_path=str(config)))
+        assert isinstance(scorer, Constant)
+    finally:
+        registry.unregister("confidence", "unit-test-scorer")
+
+
+def test_confidence_scorer_defaults_and_unknown_name(tmp_path: Path) -> None:
+    default = build_confidence_scorer(_settings())
+    assert isinstance(default, WeightedRuleScorer)
+    config = tmp_path / "confidence.yaml"
+    config.write_text("confidence:\n  scorer: nope\n")
+    with pytest.raises(UnknownProviderError, match="weighted_rules"):
+        build_confidence_scorer(_settings(confidence_config_path=str(config)))
+
+
 def test_other_decorators_validate_base_class() -> None:
-    for decorator in (register_remediation, register_notifier, register_llm):
+    for decorator in (
+        register_remediation,
+        register_notifier,
+        register_llm,
+        register_confidence_scorer,
+    ):
         with pytest.raises(TypeError):
             decorator("bad")(dict)

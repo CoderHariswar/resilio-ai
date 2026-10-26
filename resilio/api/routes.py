@@ -176,10 +176,11 @@ async def list_providers(container: ContainerDep) -> dict[str, Any]:
             "remediation": deps.remediation.name,
             "notifiers": container.settings.notifiers,
             "llm": deps.llm.name,
+            "confidence": deps.confidence_scorer.name,
         },
         "available": {
             kind: registry.available(kind)
-            for kind in ("telemetry", "remediation", "notifiers", "llm")
+            for kind in ("telemetry", "remediation", "notifiers", "llm", "confidence")
         },
         "mock_mode": container.settings.is_mock_mode,
     }

@@ -19,6 +19,7 @@ from resilio.graph.deps import WorkflowDeps
 from resilio.graph.workflow import build_checkpointer, build_workflow
 from resilio.models import IncidentStatus
 from resilio.providers.registry import (
+    build_confidence_scorer,
     build_llm_provider,
     build_notifier,
     build_remediation_provider,
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
         BaseRemediationProvider,
         BaseTelemetryProvider,
     )
+    from resilio.scoring.confidence import BaseConfidenceScorer
 
 logger = logging.getLogger(__name__)
 
@@ -71,12 +73,14 @@ async def build_container(
     llm: BaseLLMProvider | None = None,
     repository: IncidentRepository | None = None,
     queue: IncidentQueue | None = None,
+    confidence_scorer: BaseConfidenceScorer | None = None,
 ) -> Container:
     """Wire the application. Any component can be overridden (tests, embedding)."""
     telemetry = telemetry or build_telemetry_provider(settings)
     remediation = remediation or build_remediation_provider(settings, telemetry)
     notifier = notifier or build_notifier(settings)
     llm = llm or build_llm_provider(settings)
+    confidence_scorer = confidence_scorer or build_confidence_scorer(settings)
 
     pool: DictPool | None = None
     if repository is None:
@@ -99,6 +103,7 @@ async def build_container(
         notifier=notifier,
         llm=llm,
         repository=repository,
+        confidence_scorer=confidence_scorer,
     )
     queue = queue or build_queue(settings)
     graph = build_workflow(deps, checkpointer)
