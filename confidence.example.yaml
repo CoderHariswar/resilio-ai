@@ -1,0 +1,60 @@
+# Confidence scoring for accepted root-cause hypotheses.
+#
+# ResilioAI does not trust the confidence an LLM reports about itself. The value
+# the policy engine compares with MIN_AUTO_CONFIDENCE (default 0.8) is computed
+# from verified signals with the weights and rules below.
+#
+# To customize: copy this file to `confidence.yaml` in the working directory (the
+# repo root when running from a clone), or anywhere and set CONFIDENCE_CONFIG_PATH.
+# Without a file, these defaults are built in. The file is validated at startup:
+# a typo, a weight outside [0, 1], or weights that don't sum to 1 stop the service
+# with an error naming the field.
+#
+#   value = sum(raw_score x weight)   then each matching rule, in order
+#
+# A signal that doesn't apply (the judge was unavailable, or the action is not in
+# the signal's `actions`) gives its weight to the others in proportion.
+
+confidence:
+  # Registered scorer to use; add your own with @register_confidence_scorer("name").
+  scorer: weighted_rules
+
+  signals:
+    # Suspect deploy -> error onset gap: 1.0 within strong_window_min,
+    # 0.5 within weak_window_hours, otherwise 0.0 (also 0.0 with no suspect deploy).
+    # Only scored for rollbacks; for other actions its weight is redistributed.
+    deploy_timing:
+      weight: 0.30
+      strong_window_min: 30
+      weak_window_hours: 6
+      actions: [rollback]
+
+    # Share of all error occurrences that fall in the fingerprint groups the
+    # hypothesis cites (0-1).
+    dominant_error:
+      weight: 0.20
+
+    # The LLM judge's score (0-1).
+    judge_score:
+      weight: 0.30
+
+    # Score by number of rejected attempts before acceptance: 0, 1, 2 or more.
+    first_try:
+      weight: 0.10
+      scores: [1.0, 0.5, 0.25]
+
+    # Similarity of the closest past incident with the same root cause, if at
+    # least min_similarity; otherwise 0.0.
+    past_match:
+      weight: 0.10
+      min_similarity: 0.5
+
+  # Applied in order after the weighted sum. Conditions:
+  #   rollback_without_suspect_deploy, judge_unavailable,
+  #   action_is:<rollback|restart|scale_up|none>, revisions_at_least:<n>
+  # Effects (exactly one per rule): cap, floor, multiply.
+  rules:
+    - when: rollback_without_suspect_deploy
+      cap: 0.4
+    - when: judge_unavailable
+      multiply: 0.8

@@ -32,6 +32,7 @@ dependencies = [
     "langgraph-checkpoint-postgres>=2.0",
     "psycopg[binary,pool]>=3.2",
     "redis>=5.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -42,6 +43,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "pre-commit>=3.8",
+    "types-pyyaml>=6.0",
 ]
 
 [project.scripts]
