@@ -8,6 +8,7 @@ from resilio.graph.nodes.evaluator_node import check_grounding
 from resilio.providers.llm.mock import MockLLMProvider
 from resilio.scenarios import SCENARIO_TYPES
 from resilio.utils.evaluator_benchmark import (
+    calibration,
     generate_scenarios,
     load_scenarios,
     run_benchmark,
@@ -56,3 +57,27 @@ async def test_benchmark_report_metrics() -> None:
     data = report.to_dict()
     assert set(data["by_type"]) == set(SCENARIO_TYPES)
     assert data["by_type"]["memory-leak"]["n"] == 5
+
+    accepted = [r for r in report.results if r.pipeline_accepted]
+    assert all(r.llm_confidence is not None and r.rules_confidence is not None for r in accepted)
+    assert set(report.calibration) == {"llm", "rules"}
+    assert report.calibration["rules"]["n"] == len(accepted)
+    assert 0.0 <= report.calibration["rules"]["brier"] <= 1.0
+
+
+def test_calibration_scores() -> None:
+    assert calibration([]) == {
+        "n": 0,
+        "brier": 0.0,
+        "ece": 0.0,
+        "mean_confidence": 0.0,
+        "accuracy": 0.0,
+    }
+    perfect = calibration([(1.0, True), (0.0, False)])
+    assert (perfect["brier"], perfect["ece"]) == (0.0, 0.0)
+    # Two bins: 0.9 -> 1/2 right, 0.25 -> 1/2 right.
+    pairs = [(0.9, True), (0.9, False), (0.25, True), (0.25, False)]
+    result = calibration(pairs)
+    assert result["brier"] == round((0.01 + 0.81 + 0.5625 + 0.0625) / 4, 4)
+    assert result["ece"] == round(0.5 * 0.4 + 0.5 * 0.25, 4)
+    assert (result["mean_confidence"], result["accuracy"]) == (0.575, 0.5)

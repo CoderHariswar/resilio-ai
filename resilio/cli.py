@@ -17,6 +17,7 @@ import json
 import os
 import time
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -474,6 +475,35 @@ def show_cmd(incident_id: str, api_url: ApiUrl = DEFAULT_API, api_token: ApiToke
 # --------------------------------------------------------------------------- #
 # eval
 # --------------------------------------------------------------------------- #
+class ConfidenceSource(StrEnum):
+    LLM = "llm"
+    RULES = "rules"
+
+
+def _print_calibration(
+    calibration: dict[str, dict[str, float]], only: ConfidenceSource | None
+) -> None:
+    sources = [only] if only else list(ConfidenceSource)
+    labels = {ConfidenceSource.LLM: "LLM self-report", ConfidenceSource.RULES: "rule-based"}
+    n = int(calibration.get("rules", {}).get("n", 0))
+    table = Table(title=f"Confidence calibration (accepted RCAs, n={n})")
+    table.add_column("metric")
+    for source in sources:
+        table.add_column(labels[source], justify="right")
+    for key, name in (
+        ("brier", "Brier score (lower is better)"),
+        ("ece", "expected calibration error, 10 bins (lower is better)"),
+        ("mean_confidence", "mean confidence"),
+        ("accuracy", "root cause actually correct"),
+    ):
+        table.add_row(name, *(f"{calibration.get(s.value, {}).get(key, 0.0):.3f}" for s in sources))
+    console.print(table)
+    console.print(
+        "[dim]Synthetic scenarios share templates with the mock LLM and the default rules: "
+        "a sanity check, not proof. Re-run with a real model (--llm).[/]"
+    )
+
+
 def _pct(value: float) -> str:
     return f"{value * 100:.1f}%"
 
@@ -509,6 +539,10 @@ def eval_run(
     max_hallucination_escape: Annotated[
         float, typer.Option(help="Exit non-zero if the hallucination escape rate exceeds this.")
     ] = 1.0,
+    confidence_source: Annotated[
+        ConfidenceSource | None,
+        typer.Option(help="Show calibration for one source only (default: side by side)."),
+    ] = None,
 ) -> None:
     """Execute the offline benchmark and print judge precision and hallucination rates."""
     from resilio.providers.registry import build_llm_provider
@@ -582,6 +616,7 @@ def eval_run(
                 str(int(row["corrections"])),
             )
         console.print(per_type)
+        _print_calibration(report.calibration, confidence_source)
 
     failed = (
         report.judge_precision < min_precision

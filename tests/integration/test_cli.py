@@ -139,9 +139,16 @@ def test_eval_seed_and_run(tmp_path: Path) -> None:
     table = invoke("eval", "run", "--scenarios", str(path)).output
     assert "hallucination escape rate" in table
     assert "By incident type" in table
+    assert "Confidence calibration" in table
+    assert "LLM self-report" in table and "rule-based" in table
+    assert "sanity check, not proof" in table
+
+    only_rules = invoke("eval", "run", "--count", "10", "--confidence-source", "rules").output
+    assert "rule-based" in only_rules and "LLM self-report" not in only_rules
 
     report = json.loads(invoke("eval", "run", "--count", "10", "--json").output)
     assert report["scenarios"] == 10
+    assert set(report["calibration"]) == {"llm", "rules"}
 
     gated = runner.invoke(cli.app, ["eval", "run", "--count", "10", "--min-precision", "1.01"])
     assert gated.exit_code == 1

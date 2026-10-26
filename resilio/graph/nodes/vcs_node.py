@@ -8,6 +8,7 @@ synthesizer may only roll back to a SHA chosen here - never one it invents.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -22,8 +23,8 @@ logger = logging.getLogger(__name__)
 SUSPECT_WINDOW = timedelta(hours=6)
 
 
-def error_onset(event: IncidentEvent, groups: list[dict[str, Any]]) -> datetime:
-    """Earliest ``first_seen`` across evidence groups, else the alert time."""
+def onset_from_groups(groups: Sequence[Mapping[str, Any]]) -> datetime | None:
+    """Earliest timezone-aware ``first_seen`` across evidence groups."""
     onsets: list[datetime] = []
     for group in groups:
         try:
@@ -31,7 +32,12 @@ def error_onset(event: IncidentEvent, groups: list[dict[str, Any]]) -> datetime:
         except ValueError:
             continue
     aware = [o for o in onsets if o.tzinfo is not None]
-    return min(aware) if aware else event.occurred_at
+    return min(aware) if aware else None
+
+
+def error_onset(event: IncidentEvent, groups: list[dict[str, Any]]) -> datetime:
+    """Earliest ``first_seen`` across evidence groups, else the alert time."""
+    return onset_from_groups(groups) or event.occurred_at
 
 
 def correlate(

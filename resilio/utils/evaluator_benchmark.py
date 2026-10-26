@@ -22,6 +22,12 @@ rate* (invalid candidates the judge let through).
 the same evidence and is scored against ground truth: RCA accuracy, action
 accuracy, first-pass hallucination rate, and how often the evaluator had to
 correct the synthesizer.
+
+**Confidence calibration** - for every accepted hypothesis, both the model's
+self-reported confidence and the rule-based score are compared with whether
+the root cause was right: Brier score and expected calibration error (10
+bins). The scenarios come from the same templates the mock and the default
+rules know, so this is a sanity check, not proof; run it with a real model.
 """
 
 from __future__ import annotations
@@ -29,6 +35,7 @@ from __future__ import annotations
 import json
 import random
 import time
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -39,13 +46,15 @@ from resilio.core.database import InMemoryIncidentRepository
 from resilio.graph.deps import WorkflowDeps
 from resilio.graph.nodes.evaluator_node import check_grounding, evaluate_hypothesis
 from resilio.graph.nodes.synthesizer_node import synthesize
-from resilio.graph.nodes.vcs_node import correlate
-from resilio.models import RemediationAction
+from resilio.graph.nodes.vcs_node import correlate, onset_from_groups
+from resilio.models import Deployment, RemediationAction
 from resilio.providers.base import BaseLLMProvider
 from resilio.providers.notifications.mock import MockNotifier
+from resilio.providers.registry import build_confidence_scorer
 from resilio.providers.remediation.mock import MockRemediationProvider, mock_deployments
 from resilio.providers.telemetry.mock import MockTelemetryProvider, generate_traces
 from resilio.scenarios import SCENARIO_TYPES, SCENARIOS
+from resilio.scoring.confidence import signals_from_evidence
 from resilio.utils.log_sanitizer import compact_traces
 
 SERVICES = ("checkout", "catalog", "payments", "search", "auth", "orders", "inventory")
@@ -191,10 +200,52 @@ class ScenarioResult:
     first_pass_hallucinated: bool
     rca_correct: bool
     action_correct: bool
+    #: Both None when no hypothesis was accepted.
+    llm_confidence: float | None = None
+    rules_confidence: float | None = None
 
 
 def _ratio(numerator: int, denominator: int) -> float:
     return round(numerator / denominator, 4) if denominator else 0.0
+
+
+def calibration(pairs: Sequence[tuple[float, bool]], bins: int = 10) -> dict[str, float]:
+    """Brier score and expected calibration error of ``(confidence, correct)`` pairs."""
+    n = len(pairs)
+    if not n:
+        return {"n": 0, "brier": 0.0, "ece": 0.0, "mean_confidence": 0.0, "accuracy": 0.0}
+    brier = sum((c - float(y)) ** 2 for c, y in pairs) / n
+    ece = 0.0
+    for index in range(bins):
+        members = [(c, y) for c, y in pairs if min(int(c * bins), bins - 1) == index]
+        if members:
+            mean_confidence = sum(c for c, _ in members) / len(members)
+            accuracy = sum(y for _, y in members) / len(members)
+            ece += abs(accuracy - mean_confidence) * len(members) / n
+    return {
+        "n": n,
+        "brier": round(brier, 4),
+        "ece": round(ece, 4),
+        "mean_confidence": round(sum(c for c, _ in pairs) / n, 4),
+        "accuracy": round(sum(y for _, y in pairs) / n, 4),
+    }
+
+
+def _onset_gap_minutes(scenario: BenchmarkScenario) -> float | None:
+    if not scenario.suspect_deployment:
+        return None
+    onset = onset_from_groups(scenario.trace_groups)
+    if onset is None:
+        return None
+    deployed_at = Deployment.model_validate(scenario.suspect_deployment).deployed_at
+    return (onset - deployed_at).total_seconds() / 60
+
+
+def _unit(value: Any) -> float | None:
+    try:
+        return min(max(float(value), 0.0), 1.0)
+    except (TypeError, ValueError):
+        return None
 
 
 @dataclass(slots=True)
@@ -215,6 +266,8 @@ class BenchmarkReport:
     final_hallucination_rate: float
     correction_rate: float
     escalation_rate: float
+    #: ``{"llm": {...}, "rules": {...}}`` from :func:`calibration`.
+    calibration: dict[str, dict[str, float]] = field(default_factory=dict)
     results: list[ScenarioResult] = field(default_factory=list)
 
     def by_type(self) -> dict[str, dict[str, float]]:
@@ -246,6 +299,7 @@ def _benchmark_deps(llm: BaseLLMProvider, settings: Settings) -> WorkflowDeps:
         notifier=MockNotifier(),
         llm=llm,
         repository=InMemoryIncidentRepository(),
+        confidence_scorer=build_confidence_scorer(settings),
     )
 
 
@@ -290,6 +344,17 @@ async def run_benchmark(
             feedback = evaluation["feedback"]
 
         accepted = bool(evaluation["accepted"])
+        llm_confidence = rules_confidence = None
+        if accepted:
+            llm_confidence = _unit(hypothesis.get("confidence"))
+            signals = signals_from_evidence(
+                hypothesis=hypothesis,
+                evaluation=evaluation,
+                trace_groups=groups,
+                deploy_onset_gap_minutes=_onset_gap_minutes(scenario),
+                revision_count=attempts - 1,
+            )
+            rules_confidence = deps.confidence_scorer.score(signals).value
         results.append(
             ScenarioResult(
                 id=scenario.id,
@@ -306,6 +371,8 @@ async def run_benchmark(
                 rca_correct=accepted
                 and hypothesis.get("root_cause") == scenario.expected_root_cause,
                 action_correct=accepted and hypothesis.get("action") == scenario.expected_action,
+                llm_confidence=llm_confidence,
+                rules_confidence=rules_confidence,
             )
         )
 
@@ -343,5 +410,17 @@ async def run_benchmark(
         ),
         correction_rate=_ratio(sum(r.pipeline_attempts > 1 for r in results), n),
         escalation_rate=_ratio(n - len(accepted_runs), n),
+        calibration={
+            "llm": calibration(
+                [(r.llm_confidence, r.rca_correct) for r in results if r.llm_confidence is not None]
+            ),
+            "rules": calibration(
+                [
+                    (r.rules_confidence, r.rca_correct)
+                    for r in results
+                    if r.rules_confidence is not None
+                ]
+            ),
+        },
         results=results,
     )
