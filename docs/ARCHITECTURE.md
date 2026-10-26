@@ -216,7 +216,7 @@ weights five signals:
 | `dominant_error` | share of all error lines in the cited fingerprint groups | 0.20 |
 | `judge_score` | the judge's score; skipped when the judge is unavailable | 0.30 |
 | `first_try` | 1.0 / 0.5 / 0.25 for 0 / 1 / 2+ revisions | 0.10 |
-| `past_match` | similarity of the closest past incident with the same root cause, if ≥ 0.5 | 0.10 |
+| `past_match` | similarity of the closest past incident with the same root cause, if ≥ 0.5; skipped when there is none | 0.10 |
 
 A skipped signal's weight is shared among the others in proportion. Then
 rules apply in order: by default a rollback with no suspect deploy is capped

@@ -22,8 +22,11 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 - The policy engine uses the rule-based confidence. The model's self-reported value is kept as
   `llm_confidence` for comparison only.
-- With the default rules, a restart or scale-up whose first hypothesis needed a revision usually
-  scores below `MIN_AUTO_CONFIDENCE` and now asks for approval.
+
+### Fixed
+- `past_match` no longer scores 0 for an incident with no same-cause history; its weight goes to
+  the other signals. Before, first-time restarts that needed one revision fell below
+  `MIN_AUTO_CONFIDENCE` and waited for approval, which also made the CI smoke test flaky.
 
 ## [0.1.0] - 2026-10-24
 

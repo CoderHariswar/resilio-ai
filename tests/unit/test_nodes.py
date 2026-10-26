@@ -395,10 +395,10 @@ async def test_confidence_node_scores_and_explains(deps: WorkflowDeps) -> None:
         "evaluator_attempts": 1,
     }
     update = await make_confidence_node(deps)(state)
-    # deploy 0.30 + cited 1.0*0.20 + judge 0.9*0.30 + first try 0.10 + no history 0
-    assert update["confidence"] == 0.87
+    # no history: past_match's 0.10 is shared out, so the rest is scaled by 1/0.9
+    assert update["confidence"] == round((0.30 + 0.20 + 0.9 * 0.30 + 0.10) / 0.9, 4)
     assert update["llm_confidence"] == 0.95
-    assert update["confidence_breakdown"]["summary"].startswith("0.87 (deploy timing +0.30")
+    assert update["confidence_breakdown"]["summary"].startswith("0.97 (deploy timing +0.33")
     assert update["timeline"][0]["node"] == "confidence"
     assert update["timeline"][0]["message"].endswith("model said 0.95")
     assert metric("resilio_confidence_score_count") == before + 1
