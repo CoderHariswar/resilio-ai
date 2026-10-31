@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # ---------------------------------------------------------------- builder
-FROM python:3.12-slim AS builder
+FROM python:3.15-slim AS builder
 COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /uvx /bin/
 
 ENV UV_COMPILE_BYTECODE=1 \
@@ -21,7 +21,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen
 
 # ---------------------------------------------------------------- runtime
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 LABEL org.opencontainers.image.title="ResilioAI" \
       org.opencontainers.image.description="Autonomous AI incident responder" \
